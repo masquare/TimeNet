@@ -82,7 +82,8 @@ Each package records the commit of the code that runs:
 
 If the commit of an installed package is unknown, the build fails and names the reason. For
 example, git is not on `PATH`, git fails in the checkout, or a plain `uv build` produced the wheel,
-so the package has no `_build_info.json`.
+so the package has no `_build_info.json`. A publish to a remote registry also needs each commit to
+have no local changes. See [Traceable builds](build.md#traceable-builds).
 
 The values locator is backend-neutral. One schema covers both scalar and multidimensional specs. A
 multidimensional spec records its shape in `value_shape` and `dimension_names`. It does not need a
