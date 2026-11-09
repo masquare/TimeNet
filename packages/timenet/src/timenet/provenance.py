@@ -178,8 +178,6 @@ class Snapshot(BaseModel, ABC):
 
     def require_unchanged_since(self, recorded: Self) -> None:
         """Raise ``TimeNetBuildError`` unless this snapshot is traceable and equal to ``recorded``."""
-        # A caller reads a new snapshot after the build wrote its manifest. If the code changed
-        # while the build ran, the manifest names a state that no longer exists.
         self.require_traceable()
         if self != recorded:
             raise TimeNetBuildError(
@@ -274,9 +272,7 @@ class TimeNetSnapshot(Snapshot):
         return sources
 
     def require_traceable(self) -> None:
-        """Refuse a publish to a remote registry if a TimeNet package has local changes."""
-        # Only a publish to a remote registry asks for this check. Such a release outlives the
-        # machine that built it, so its manifest must name code that exists in the repository.
+        """Raise ``TimeNetBuildError`` if a TimeNet package has local changes."""
         try:
             for package in self._installed():
                 package.require_traceable()
@@ -300,9 +296,8 @@ class TimeNetSnapshot(Snapshot):
     @contextmanager
     def held_for_build(cls) -> Generator["TimeNetSnapshot"]:
         """Read one snapshot and hold it for the build inside the ``with`` block."""
-        # The publish checks and the manifest then see the same state: the installed source state
-        # read when the build started. An enclosing build's snapshot stays in force, so a parent
-        # built inside a build sees the same state.
+        # Every lookup inside the block sees the state read when the block started. An enclosing
+        # block's snapshot stays in force, so a nested build sees the same state.
         held = _HELD_SNAPSHOT.get()
         if held is not None:
             yield held

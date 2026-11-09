@@ -49,8 +49,7 @@ def run_pipeline(  # ruff: ignore[too-many-arguments]
     connector that overrides ``compose``; otherwise the build raises before it opens a parent or
     downloads anything. The engine only writes local files. Publishing to a remote registry is a
     separate step. The manifest records the commit of the TimeNet code as it was when the build
-    started. The engine reads that commit only for a version that it builds, so an already-committed
-    version returns even if the commit is unknown.
+    started.
 
     Args:
         connector: The connector to build.
@@ -131,10 +130,8 @@ def publish_pipeline(  # ruff: ignore[too-many-arguments]
     A registry other than a local one holds open releases only, so a card that is not open fails
     before any download. The composed dataset can be a child whose card says open while a parent is
     not open. So the engine checks the dataset again with its lineage before the write.
-    Such a registry also needs TimeNet code without local changes, which the engine checks before
-    any download. The registry checks both again when it stores the release. The engine reads the
-    commit only for a version that it builds, so an already-committed version returns even if the
-    commit is unknown.
+    Such a registry also needs releases built with clean TimeNet code without local changes, which
+    the engine checks automatically.
 
     Args:
         connector: The connector to build.
@@ -157,8 +154,8 @@ def publish_pipeline(  # ruff: ignore[too-many-arguments]
             the engine read. Nothing is published then.
         TimeNetAccessError: If the registry is not local, and the card, or the composed dataset with
             its lineage, is not open.
-        TimeNetBuildError: If the commit of an installed TimeNet distribution is unknown, or the
-            registry is remote and the distribution has local changes. Nothing is downloaded then.
+        TimeNetBuildError: If the commit of an installed TimeNet package is unknown, or the
+            registry is remote and a package has local changes. Nothing is downloaded then.
     """  # ruff: ignore[docstring-extraneous-exception] - raised by _check_composes, _compose, require_open_access, and require_traceable
     resolved_backend = _resolve_values_backend(connector, values_backend)
     metadata = connector.metadata()

@@ -229,8 +229,8 @@ def test_a_snapshot_with_local_changes_is_refused_with_the_package_and_its_commi
 
 
 @pytest.mark.real_provenance
-def test_a_distribution_that_is_not_installed_needs_no_commit(installed):
-    # Only timenet is installed. A publish needs no commit for timenet-connectors.
+def test_a_package_that_is_not_installed_needs_no_commit(installed):
+    # Only timenet is installed, for example to publish with a connector of one's own.
     installed(build_info=_CLEAN.model_dump_json())
     TimeNetSnapshot.read().require_traceable()
 
