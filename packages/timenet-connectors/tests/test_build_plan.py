@@ -416,7 +416,7 @@ def test_an_isolated_build_to_a_remote_output_refuses_untraceable_code_before_uv
     dirty = TimeNetSnapshot.from_source_map({"timenet": GitSource(sha="a" * 40, contains_local_changes=True)})
     monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(lambda cls: dirty))
 
-    with pytest.raises(TimeNetBuildError, match="timenet has uncommitted changes"):
+    with pytest.raises(TimeNetBuildError, match="timenet contains changes that are not in commit"):
         cli_module.build_one(PARENT.dataset_id, "timenet://", isolation=True)
 
 

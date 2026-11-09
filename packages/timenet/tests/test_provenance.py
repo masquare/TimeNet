@@ -221,8 +221,10 @@ def test_a_snapshot_with_local_changes_is_refused_with_the_package_and_its_commi
         TimeNetBuildError,
         match=(
             r"refusing to publish to a remote registry, because its manifest must name the exact code\. "
-            r"timenet-connectors has uncommitted changes in its package directory at bbbbbbbbbbbb\. "
-            r"Commit them first\. Or build to a local directory"
+            r"timenet-connectors contains changes that are not in commit bbbbbbbbbbbb\. "
+            r"If timenet-connectors is installed from a checkout, commit the changes\. "
+            r"If it is installed from a wheel, install one built from a clean checkout\. "
+            r"Or build to a local directory"
         ),
     ):
         snapshot.require_traceable()

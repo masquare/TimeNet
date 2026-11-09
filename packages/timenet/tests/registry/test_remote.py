@@ -550,7 +550,7 @@ def test_store_refuses_untraceable_code_before_writing(publish_fake, monkeypatch
     registry, state = publish_fake
     dirty = TimeNetSnapshot.from_source_map({"timenet": GitSource(sha="a" * 40, contains_local_changes=True)})
     monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(lambda cls: dirty))
-    with pytest.raises(TimeNetBuildError, match="timenet has uncommitted changes"):
+    with pytest.raises(TimeNetBuildError, match="timenet contains changes that are not in commit"):
         registry.store(make_dataset())
     assert state["manifest"] is None
 

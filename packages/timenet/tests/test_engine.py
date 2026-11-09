@@ -551,7 +551,7 @@ def test_publish_pipeline_refuses_a_build_with_local_changes_before_downloading(
     monkeypatch.setattr(_DemoConnector, "download", lambda self, cache_dir: pytest.fail("downloaded"))
     remote = RemoteRegistry("http://api.local", transport=httpx.MockTransport(_no_upload), cache_dir=tmp_path)
 
-    with pytest.raises(TimeNetBuildError, match="timenet has uncommitted changes in its package directory"):
+    with pytest.raises(TimeNetBuildError, match="timenet contains changes that are not in commit"):
         publish_pipeline(_DemoConnector(), remote, cache_dir=tmp_path / "cache")
 
 

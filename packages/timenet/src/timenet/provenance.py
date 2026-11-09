@@ -219,8 +219,11 @@ class PackageSnapshot(Snapshot):
     def require_traceable(self) -> None:
         """Raise ``TimeNetBuildError`` if this package has local changes."""
         if self.source.contains_local_changes:
+            # A wheel keeps the flag of the checkout that built it, so a commit alone does not clear it.
             raise TimeNetBuildError(
-                f"{self.package_name} has uncommitted changes in its package directory at {self.source.sha[:12]}"
+                f"{self.package_name} contains changes that are not in commit {self.source.sha[:12]}. "
+                f"If {self.package_name} is installed from a checkout, commit the changes. "
+                "If it is installed from a wheel, install one built from a clean checkout"
             )
 
 
@@ -279,7 +282,7 @@ class TimeNetSnapshot(Snapshot):
         except TimeNetBuildError as exc:
             raise TimeNetBuildError(
                 "refusing to publish to a remote registry, because its manifest must name the exact code. "
-                f"{exc}. Commit them first. Or build to a local directory, which accepts any state."
+                f"{exc}. Or build to a local directory, which accepts any state."
             ) from exc
 
     def _installed(self) -> list[PackageSnapshot]:
