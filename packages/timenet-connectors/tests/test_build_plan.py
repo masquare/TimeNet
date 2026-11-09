@@ -20,7 +20,7 @@ from timenet.errors import (
     TimeNetMissingParentError,
 )
 from timenet.manifest import GitSource
-from timenet.provenance import GitSnapshot
+from timenet.provenance import TimeNetSnapshot
 from timenet.reader import TimeFReader
 from timenet.registry import LocalRegistry, S3Registry, WritableRegistry
 from timenet.registry._paths import release_dir
@@ -413,8 +413,8 @@ def test_an_isolated_build_to_a_remote_output_refuses_untraceable_code_before_uv
     _install_cards(monkeypatch, parent={})
     monkeypatch.setattr(cli_module, "_resolve_target", lambda output: _Hosted(tmp_path / "hosted"))
     monkeypatch.setattr(cli_module, "run_isolated", lambda *args, **kwargs: pytest.fail("started an isolated build"))
-    dirty = GitSnapshot({"timenet": GitSource(sha="a" * 40, contains_local_changes=True)})
-    monkeypatch.setattr(GitSnapshot, "read", staticmethod(lambda: dirty))
+    dirty = TimeNetSnapshot.from_source_map({"timenet": GitSource(sha="a" * 40, contains_local_changes=True)})
+    monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(lambda cls: dirty))
 
     with pytest.raises(TimeNetBuildError, match="Uncommitted changes"):
         cli_module.build_one(PARENT.dataset_id, "timenet://", isolation=True)

@@ -212,3 +212,41 @@ def test_a_field_must_hold_the_commit_of_its_own_package():
     connectors = PackageSnapshot(package_name="timenet-connectors", source=_CLEAN)
     with pytest.raises(ValidationError, match="the field for timenet holds the commit of timenet-connectors"):
         TimeNetSnapshot(timenet=connectors)
+
+
+def test_a_snapshot_with_local_changes_is_refused_with_the_package_and_its_commit():
+    dirty = GitSource(sha="b" * 40, contains_local_changes=True)
+    snapshot = TimeNetSnapshot.from_source_map({"timenet": _CLEAN, "timenet-connectors": dirty})
+    with pytest.raises(
+        TimeNetBuildError,
+        match=r"Uncommitted changes in the package directory of timenet-connectors at bbbbbbbbbbbb\. Commit them first",
+    ):
+        snapshot.require_traceable()
+
+
+@pytest.mark.real_provenance
+def test_a_distribution_that_is_not_installed_needs_no_commit(installed):
+    # Only timenet is installed. A publish needs no commit for timenet-connectors.
+    installed(build_info=_CLEAN.model_dump_json())
+    TimeNetSnapshot.read().require_traceable()
+
+
+def test_a_build_holds_one_snapshot_for_every_lookup_inside_it(monkeypatch):
+    first = TimeNetSnapshot.from_source_map({"timenet": _CLEAN})
+    later = TimeNetSnapshot.from_source_map({"timenet": GitSource(sha="b" * 40, contains_local_changes=False)})
+    reads = iter([first])
+    monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(lambda cls: next(reads, later)))
+
+    with TimeNetSnapshot.held_for_build():
+        with TimeNetSnapshot.held_for_build():
+            assert TimeNetSnapshot.current() == first
+        assert TimeNetSnapshot.current() == first
+    # Outside the build, a lookup reads git again.
+    assert TimeNetSnapshot.current() == later
+
+
+def test_an_upload_is_refused_if_the_code_changed_since_the_manifest_was_written():
+    now = TimeNetSnapshot.from_source_map({"timenet": GitSource(sha="b" * 40, contains_local_changes=False)})
+    with pytest.raises(TimeNetBuildError, match="changed while the build ran"):
+        now.require_unchanged_since(TimeNetSnapshot.from_source_map({"timenet": _CLEAN}))
+    now.require_unchanged_since(now)

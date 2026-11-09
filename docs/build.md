@@ -120,8 +120,8 @@ TimeNet requires that a published dataset can be traced to the code that built i
 therefore records, in its [manifest](manifest.md), the git commit of the TimeNet packages it used.
 
 The manifest also records whether that code had uncommitted changes. A remote registry rejects a
-dataset that was built with uncommitted changes or with an unknown commit. You can still build it
-into a local registry.
+dataset that was built with uncommitted changes. You can still build it into a local registry. If
+the commit is unknown, every build fails.
 
 ## Prepare parent releases
 

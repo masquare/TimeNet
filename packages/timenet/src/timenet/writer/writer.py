@@ -486,7 +486,7 @@ class TimeFWriter:
             payload_sources=self._storage_sources.sources,
             parent_cards=import_state.parent_cards,
             lineage=tuple(import_state.lineage.values()),
-            build_env=BuildEnvironment.capture(git=TimeNetSnapshot.read().to_source_map()),
+            build_env=BuildEnvironment.capture(git=TimeNetSnapshot.current().to_source_map()),
             timef_format_version=1,
         )
         (self._staging_dir / MANIFEST_FILE).write_text(manifest.to_json())

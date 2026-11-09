@@ -27,7 +27,7 @@ from timenet.dataset import TimeFDataset
 from timenet.errors import TimeNetDatasetNotFoundError, TimeNetRegistryError
 from timenet.format.constants import MANIFEST_FILE
 from timenet.manifest import Manifest, PayloadSource
-from timenet.provenance import GitSnapshot
+from timenet.provenance import TimeNetSnapshot
 from timenet.registry._paths import release_dir
 from timenet.registry.lazy_read import LazyReadRegistry
 from timenet.registry.version import DatasetVersion
@@ -152,7 +152,7 @@ class S3Registry(LazyReadRegistry):
         root = f"{self._bucket}/{self._key(reference.dataset_id, str(reference.version))}"
         return DatasetVersion(manifest, self._s3_filesystem(), root)
 
-    @GitSnapshot.held_for_build()
+    @TimeNetSnapshot.held_for_build()
     def store(
         self,
         dataset: TimeFDataset,
@@ -181,9 +181,9 @@ class S3Registry(LazyReadRegistry):
             The stored version string.
 
         Raises:
-        TimeNetAccessError: If the release, with its lineage, is not open. Nothing is written.
-        TimeNetBuildError: If the TimeNet code cannot be traced to a commit, or changed while the
-            release was written. Nothing is uploaded.
+            TimeNetAccessError: If the release, with its lineage, is not open. Nothing is written.
+            TimeNetBuildError: If the TimeNet code has local changes or an unknown commit, or it
+                changed while the release was written. Nothing is uploaded.
         """  # ruff: ignore[docstring-extraneous-exception] - raised by require_open_access and the provenance checks
         if dataset.schema is None:
             dataset.derive_schema()
@@ -193,7 +193,7 @@ class S3Registry(LazyReadRegistry):
             return version
         # This registry serves its releases to others, so it holds only open and traceable ones.
         require_open_access(dataset.metadata, dataset.lineage.values())
-        GitSnapshot.current().require_traceable()
+        TimeNetSnapshot.current().require_traceable()
         client = self._client()
         final_base = self._key(dataset_id, version)
         temp_base = f"{final_base}.tmp-{uuid.uuid4().hex}"
@@ -211,7 +211,8 @@ class S3Registry(LazyReadRegistry):
                 writer.write()
             version_dir = release_dir(staging, DatasetRef.parse(f"{dataset_id}@{version}"))
             manifest = Manifest.model_validate_json((version_dir / MANIFEST_FILE).read_text())
-            GitSnapshot.read().require_unchanged_since(manifest.build_env.get("git", {}))
+            recorded = TimeNetSnapshot.from_source_map(manifest.build_env.git)
+            TimeNetSnapshot.read().require_unchanged_since(recorded)
             self._delete_prefix(client, f"{final_base}.tmp-")  # sweep a prior crashed publish's temp prefix
             files = sorted(path for path in version_dir.rglob("*") if path.is_file())
             for path in files:

@@ -18,7 +18,7 @@ from timenet.config import settings
 from timenet.dataset import TimeFDataset
 from timenet.errors import TimeNetRegistryError
 from timenet.manifest import Manifest, PayloadSource
-from timenet.provenance import GitSnapshot
+from timenet.provenance import TimeNetSnapshot
 from timenet.registry._paths import release_dir
 from timenet.registry.lazy_read import LazyReadRegistry
 from timenet.registry.remote._download import ProgressCallback, download_version_files
@@ -161,7 +161,7 @@ class RemoteRegistry(LazyReadRegistry):
             self._http, manifest, dataset_id, version, Path(dest_dir), force=force, progress_cb=progress_cb
         )
 
-    @GitSnapshot.held_for_build()
+    @TimeNetSnapshot.held_for_build()
     def store(
         self,
         dataset: TimeFDataset,
@@ -190,10 +190,10 @@ class RemoteRegistry(LazyReadRegistry):
 
         Raises:
             TimeNetRegistryError: If the service requests a file that was not produced locally.
-        TimeNetAccessError: If the release, with its lineage, is not open. Nothing is written.
-        TimeNetBuildError: If the TimeNet code cannot be traced to a commit, or changed while the
-            release was written. Nothing is uploaded.
-        """
+            TimeNetAccessError: If the release, with its lineage, is not open. Nothing is written.
+            TimeNetBuildError: If the TimeNet code has local changes or an unknown commit, or it
+                changed while the release was written. Nothing is uploaded.
+        """  # ruff: ignore[docstring-extraneous-exception] - raised by require_open_access and the provenance checks
         if dataset.schema is None:
             dataset.derive_schema()
         dataset_id = dataset.metadata.dataset_id
@@ -202,7 +202,7 @@ class RemoteRegistry(LazyReadRegistry):
             return version
         # This registry serves its releases to others, so it holds only open and traceable ones.
         require_open_access(dataset.metadata, dataset.lineage.values())
-        GitSnapshot.current().require_traceable()
+        TimeNetSnapshot.current().require_traceable()
         staging_root = Path(tempfile.mkdtemp(prefix="timenet-publish-"))
         try:
             # The writer stages locally but checks every payload source against this registry.
@@ -218,7 +218,8 @@ class RemoteRegistry(LazyReadRegistry):
             version_dir = release_dir(staging_root, DatasetRef.parse(f"{dataset_id}@{version}"))
             manifest_bytes = (version_dir / "manifest.json").read_bytes()
             manifest = Manifest.model_validate_json(manifest_bytes.decode())
-            GitSnapshot.read().require_unchanged_since(manifest.build_env.get("git", {}))
+            recorded = TimeNetSnapshot.from_source_map(manifest.build_env.git)
+            TimeNetSnapshot.read().require_unchanged_since(recorded)
             declared = {part.path for part in manifest.files.all_files()}
             publish_endpoint = f"/datasets/{dataset_id}/{version}/publish"
             publish = PublishResponseModel.model_validate_json(

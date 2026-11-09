@@ -37,7 +37,7 @@ from timenet.errors import (
     TimeNetRegistryError,
 )
 from timenet.manifest import PayloadSource
-from timenet.provenance import GitSnapshot
+from timenet.provenance import TimeNetSnapshot
 from timenet.registry import (
     BaseRegistry,
     LocalRegistry,
@@ -404,13 +404,14 @@ def _build(  # ruff: ignore[too-many-arguments]
 
     Raises:
         TimeNetBuildError: If an isolated build publishes to a remote output and the TimeNet code
-            cannot be traced to a commit. This check comes before uv builds the environment.
-    """  # ruff: ignore[docstring-extraneous-exception] - raised by GitSnapshot.require_traceable
+            has local changes or an unknown commit. This check comes before uv builds the
+            environment.
+    """  # ruff: ignore[docstring-extraneous-exception] - raised by TimeNetSnapshot.require_traceable
     pinned_by = pinned_by or None
     if isolated and not isinstance(target, Path):
         # The child refuses an untraceable publish too, but only after uv built its environment.
         # The parent installs the same TimeNet code, so it can refuse first.
-        GitSnapshot.current().require_traceable()
+        TimeNetSnapshot.current().require_traceable()
     if isolated:
         # The child is this same CLI and inherits stderr, so it is the only narrator: it prints the
         # status lines and the richer download and shard progress. This branch stays quiet and only

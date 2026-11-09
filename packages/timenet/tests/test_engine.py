@@ -11,7 +11,7 @@ from timenet.dataset import TimeFDataset
 from timenet.engine import open_parents, publish_pipeline, run_pipeline, store_dataset
 from timenet.errors import TimeFValidationError, TimeNetAccessError, TimeNetBuildError, TimeNetDatasetNotFoundError
 from timenet.manifest import GitSource, Manifest
-from timenet.provenance import GitSnapshot
+from timenet.provenance import TimeNetSnapshot
 from timenet.reader import TimeFReader
 from timenet.registry import LocalRegistry, RemoteRegistry
 from timenet.registry.writable import WritableRegistry
@@ -535,9 +535,9 @@ def test_publish_pipeline_refuses_an_open_child_of_a_credentialed_parent_before_
 
 def _git_states(monkeypatch, *states):
     """Make each git read return the next state, and the last one from then on."""
-    snapshots = [GitSnapshot(state) for state in states]
+    snapshots = [TimeNetSnapshot.from_source_map(state) for state in states]
     reads = iter(snapshots)
-    monkeypatch.setattr(GitSnapshot, "read", staticmethod(lambda: next(reads, snapshots[-1])))
+    monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(lambda cls: next(reads, snapshots[-1])))
 
 
 def _no_upload(request: httpx.Request) -> httpx.Response:
@@ -562,7 +562,7 @@ def test_a_local_build_with_local_changes_records_them(tmp_path, monkeypatch):
     publish_pipeline(_DemoConnector(), LocalRegistry(tmp_path / "local"), cache_dir=tmp_path / "cache")
 
     manifest = Manifest.model_validate_json(next((tmp_path / "local").rglob("manifest.json")).read_text())
-    assert manifest.build_env["git"] == {"timenet": dirty}
+    assert manifest.build_env.git == {"timenet": dirty}
 
 
 def test_publish_pipeline_refuses_code_that_changed_while_the_build_ran(tmp_path, monkeypatch):
