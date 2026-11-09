@@ -24,12 +24,12 @@ from uv import find_uv_bin
 
 from timenet.errors import TimeNetBuildError
 from timenet.manifest import PayloadSource
-from timenet.provenance import TIMENET_DISTRIBUTIONS, local_source_path
+from timenet.provenance import TimeNetDistribution
 from timenet.types.references import DatasetRef
 from timenet_connectors.discovery import requirements_for
 
 
-BASE_DISTRIBUTIONS = TIMENET_DISTRIBUTIONS
+BASE_DISTRIBUTIONS = TimeNetDistribution.NAMES
 """Pinned to the parent's own versions, so the code that writes the TimeF bytes is the code that
 reads them back. ``timenet-connectors`` depends on ``timenet[build]``, so the card-YAML
 dependencies arrive transitively and the extra never needs naming here."""
@@ -249,7 +249,7 @@ def _base_args() -> tuple[str, ...]:
                 f"cannot build a build environment: {name} is not installed in {sys.executable}. "
                 "Reinstall it, or build in this interpreter with TIMENET_ISOLATION=off."
             ) from exc
-        source = local_source_path(dist)
+        source = TimeNetDistribution(dist).path_to_ondisk_project_directory()
         if source is not None:
             args += ["--with-editable", str(source)]
         else:
