@@ -222,7 +222,7 @@ class PackageSnapshot(Snapshot):
         """Raise ``TimeNetBuildError`` if this package has local changes."""
         if self.source.contains_local_changes:
             raise TimeNetBuildError(
-                f"{self.distribution} has uncommitted changes in its package directory at {self.source.sha[:12]}"
+                f"{self.package_name} has uncommitted changes in its package directory at {self.source.sha[:12]}"
             )
 
 
@@ -274,7 +274,7 @@ class TimeNetSnapshot(Snapshot):
         return sources
 
     def require_traceable(self) -> None:
-        """Refuse a publish to a remote registry if a TimeNet distribution has local changes."""
+        """Refuse a publish to a remote registry if a TimeNet package has local changes."""
         # Only a publish to a remote registry asks for this check. Such a release outlives the
         # machine that built it, so its manifest must name code that exists in the repository.
         try:
