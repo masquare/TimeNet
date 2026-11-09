@@ -8,7 +8,7 @@ from timenet.client import TimeNet
 from timenet.config import settings
 from timenet.engine import publish_pipeline, run_pipeline
 from timenet.errors import TimeFValidationError
-from timenet.provenance import build_env
+from timenet.manifest import BuildEnvironment
 from timenet.registry import LocalRegistry, RemoteRegistry
 from timenet.testing import assert_datasets_equal
 from timenet_connectors import build, load
@@ -199,5 +199,5 @@ def test_an_isolated_build_records_its_environment(tmp_path, monkeypatch):
     # pytest runs this process and is a runtime dependency of neither package, so it separates a
     # real isolated build from one that quietly inherited the parent's site-packages. Assert both
     # directions: without the first the second would also pass on a machine that simply lacks it.
-    assert "pytest" in build_env()["packages"]
+    assert "pytest" in BuildEnvironment.capture(git={}).packages
     assert "pytest" not in packages
