@@ -121,7 +121,8 @@ therefore records, in its [manifest](manifest.md), the git commit of the TimeNet
 
 The manifest also records whether that code had uncommitted changes. A remote registry rejects a
 dataset that was built with uncommitted changes. You can still build it into a local registry. If
-the commit is unknown, every build fails.
+the commit is unknown, every build fails. A version that the output already holds is the exception:
+TimeNet skips it without a read of the commit.
 
 ## Prepare parent releases
 

@@ -149,3 +149,15 @@ def test_store_refuses_code_that_changed_while_the_release_was_written(s3_root, 
     with pytest.raises(TimeNetBuildError, match="changed while the build ran"):
         registry.store(make_dataset())
     assert not registry.exists(make_dataset().metadata.dataset_id, str(make_dataset().metadata.dataset_version))
+
+
+def test_store_skips_an_already_stored_version_even_if_the_commit_is_unknown(s3_root, tmp_path, monkeypatch):
+    # Moto keeps its buckets across tests, so use a prefix that no other test stores under.
+    registry = S3Registry(f"{s3_root}/unknown-commit", cache_dir=tmp_path / "cache")
+    version = registry.store(make_dataset())
+
+    def unreadable(cls):
+        raise TimeNetBuildError("cannot find the git commit of timenet")
+
+    monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(unreadable))
+    assert registry.store(make_dataset()) == version

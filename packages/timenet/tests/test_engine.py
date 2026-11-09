@@ -551,7 +551,7 @@ def test_publish_pipeline_refuses_a_build_with_local_changes_before_downloading(
     monkeypatch.setattr(_DemoConnector, "download", lambda self, cache_dir: pytest.fail("downloaded"))
     remote = RemoteRegistry("http://api.local", transport=httpx.MockTransport(_no_upload), cache_dir=tmp_path)
 
-    with pytest.raises(TimeNetBuildError, match="Uncommitted changes in the package directory of timenet"):
+    with pytest.raises(TimeNetBuildError, match="timenet has uncommitted changes in its package directory"):
         publish_pipeline(_DemoConnector(), remote, cache_dir=tmp_path / "cache")
 
 
@@ -576,3 +576,16 @@ def test_publish_pipeline_refuses_code_that_changed_while_the_build_ran(tmp_path
 
     with pytest.raises(TimeNetBuildError, match="changed while the build ran"):
         publish_pipeline(_DemoConnector(), remote, cache_dir=tmp_path / "cache")
+
+
+def _unreadable_commit(cls):
+    raise TimeNetBuildError("cannot find the git commit of timenet")
+
+
+def test_an_already_built_version_returns_even_if_the_commit_is_unknown(tmp_path, monkeypatch):
+    root = tmp_path / "local"
+    version_dir = run_pipeline(_DemoConnector(), root, cache_dir=tmp_path / "cache")
+    monkeypatch.setattr(TimeNetSnapshot, "read", classmethod(_unreadable_commit))
+
+    assert run_pipeline(_DemoConnector(), root, cache_dir=tmp_path / "cache") == version_dir
+    assert publish_pipeline(_DemoConnector(), LocalRegistry(root), cache_dir=tmp_path / "cache") == version_dir.name

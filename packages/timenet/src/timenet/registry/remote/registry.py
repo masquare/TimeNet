@@ -161,7 +161,6 @@ class RemoteRegistry(LazyReadRegistry):
             self._http, manifest, dataset_id, version, Path(dest_dir), force=force, progress_cb=progress_cb
         )
 
-    @TimeNetSnapshot.held_for_build()
     def store(
         self,
         dataset: TimeFDataset,
@@ -202,45 +201,46 @@ class RemoteRegistry(LazyReadRegistry):
             return version
         # This registry serves its releases to others, so it holds only open and traceable ones.
         require_open_access(dataset.metadata, dataset.lineage.values())
-        TimeNetSnapshot.current().require_traceable()
-        staging_root = Path(tempfile.mkdtemp(prefix="timenet-publish-"))
-        try:
-            # The writer stages locally but checks every payload source against this registry.
-            with TimeFWriter(
-                staging_root,
-                dataset,
-                values_backend=values_backend,
-                progress_cb=progress_cb,
-                registry=self,
-                pinned_by=pinned_by,
-            ) as writer:
-                writer.write()
-            version_dir = release_dir(staging_root, DatasetRef.parse(f"{dataset_id}@{version}"))
-            manifest_bytes = (version_dir / "manifest.json").read_bytes()
-            manifest = Manifest.model_validate_json(manifest_bytes.decode())
-            recorded = TimeNetSnapshot.from_source_map(manifest.build_env.git)
-            TimeNetSnapshot.read().require_unchanged_since(recorded)
-            declared = {part.path for part in manifest.files.all_files()}
-            publish_endpoint = f"/datasets/{dataset_id}/{version}/publish"
-            publish = PublishResponseModel.model_validate_json(
-                self._http.post(publish_endpoint, content=manifest_bytes).content
-            )
-            files = publish.files
-            # Cross-check the service's upload list against the manifest before uploading. A manifest file
-            # the service omits would publish an incomplete version; a requested file we did not produce is
-            # not ours to upload. Both fail loudly here instead of partway through the upload.
-            unrequested = sorted(declared - set(files))
-            missing = [relpath for relpath in files if not (version_dir / relpath).is_file()]
-            if unrequested or missing:
-                raise TimeNetRegistryError(
-                    f"publish for {dataset_id}@{version} disagrees with the manifest: "
-                    f"service did not request {unrequested}, requested files not produced locally {missing}"
+        with TimeNetSnapshot.held_for_build() as snapshot:
+            snapshot.require_traceable()
+            staging_root = Path(tempfile.mkdtemp(prefix="timenet-publish-"))
+            try:
+                # The writer stages locally but checks every payload source against this registry.
+                with TimeFWriter(
+                    staging_root,
+                    dataset,
+                    values_backend=values_backend,
+                    progress_cb=progress_cb,
+                    registry=self,
+                    pinned_by=pinned_by,
+                ) as writer:
+                    writer.write()
+                version_dir = release_dir(staging_root, DatasetRef.parse(f"{dataset_id}@{version}"))
+                manifest_bytes = (version_dir / "manifest.json").read_bytes()
+                manifest = Manifest.model_validate_json(manifest_bytes.decode())
+                recorded = TimeNetSnapshot.from_source_map(manifest.build_env.git)
+                TimeNetSnapshot.read().require_unchanged_since(recorded)
+                declared = {part.path for part in manifest.files.all_files()}
+                publish_endpoint = f"/datasets/{dataset_id}/{version}/publish"
+                publish = PublishResponseModel.model_validate_json(
+                    self._http.post(publish_endpoint, content=manifest_bytes).content
                 )
-            for relpath in files:
-                self._upload_file(dataset_id, version, version_dir, relpath)
-            self._http.post(f"/datasets/{dataset_id}/{version}/finalize")
-        finally:
-            shutil.rmtree(staging_root, ignore_errors=True)
+                files = publish.files
+                # Cross-check the service's upload list against the manifest before uploading. A manifest file
+                # the service omits would publish an incomplete version; a requested file we did not produce is
+                # not ours to upload. Both fail loudly here instead of partway through the upload.
+                unrequested = sorted(declared - set(files))
+                missing = [relpath for relpath in files if not (version_dir / relpath).is_file()]
+                if unrequested or missing:
+                    raise TimeNetRegistryError(
+                        f"publish for {dataset_id}@{version} disagrees with the manifest: "
+                        f"service did not request {unrequested}, requested files not produced locally {missing}"
+                    )
+                for relpath in files:
+                    self._upload_file(dataset_id, version, version_dir, relpath)
+                self._http.post(f"/datasets/{dataset_id}/{version}/finalize")
+            finally:
+                shutil.rmtree(staging_root, ignore_errors=True)
         return version
 
     def _upload_file(self, dataset_id: str, version: str, version_dir: Path, relpath: str) -> None:

@@ -152,7 +152,6 @@ class S3Registry(LazyReadRegistry):
         root = f"{self._bucket}/{self._key(reference.dataset_id, str(reference.version))}"
         return DatasetVersion(manifest, self._s3_filesystem(), root)
 
-    @TimeNetSnapshot.held_for_build()
     def store(
         self,
         dataset: TimeFDataset,
@@ -193,38 +192,41 @@ class S3Registry(LazyReadRegistry):
             return version
         # This registry serves its releases to others, so it holds only open and traceable ones.
         require_open_access(dataset.metadata, dataset.lineage.values())
-        TimeNetSnapshot.current().require_traceable()
-        client = self._client()
-        final_base = self._key(dataset_id, version)
-        temp_base = f"{final_base}.tmp-{uuid.uuid4().hex}"
-        staging = Path(tempfile.mkdtemp(prefix="timenet-s3-"))
-        try:
-            # The writer stages locally but checks every payload source against this registry.
-            with TimeFWriter(
-                staging,
-                dataset,
-                values_backend=values_backend,
-                progress_cb=progress_cb,
-                registry=self,
-                pinned_by=pinned_by,
-            ) as writer:
-                writer.write()
-            version_dir = release_dir(staging, DatasetRef.parse(f"{dataset_id}@{version}"))
-            manifest = Manifest.model_validate_json((version_dir / MANIFEST_FILE).read_text())
-            recorded = TimeNetSnapshot.from_source_map(manifest.build_env.git)
-            TimeNetSnapshot.read().require_unchanged_since(recorded)
-            self._delete_prefix(client, f"{final_base}.tmp-")  # sweep a prior crashed publish's temp prefix
-            files = sorted(path for path in version_dir.rglob("*") if path.is_file())
-            for path in files:
-                relpath = path.relative_to(version_dir).as_posix()
-                client.upload_file(str(path), self._bucket, f"{temp_base}/{relpath}")
-            data_relpaths = [path.relative_to(version_dir).as_posix() for path in files if path.name != MANIFEST_FILE]
-            for relpath in data_relpaths:
-                self._move(client, f"{temp_base}/{relpath}", f"{final_base}/{relpath}")
-            self._move(client, f"{temp_base}/{MANIFEST_FILE}", f"{final_base}/{MANIFEST_FILE}")
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
-            self._delete_prefix(client, f"{temp_base}/")  # remove any objects left staged in the temp prefix
+        with TimeNetSnapshot.held_for_build() as snapshot:
+            snapshot.require_traceable()
+            client = self._client()
+            final_base = self._key(dataset_id, version)
+            temp_base = f"{final_base}.tmp-{uuid.uuid4().hex}"
+            staging = Path(tempfile.mkdtemp(prefix="timenet-s3-"))
+            try:
+                # The writer stages locally but checks every payload source against this registry.
+                with TimeFWriter(
+                    staging,
+                    dataset,
+                    values_backend=values_backend,
+                    progress_cb=progress_cb,
+                    registry=self,
+                    pinned_by=pinned_by,
+                ) as writer:
+                    writer.write()
+                version_dir = release_dir(staging, DatasetRef.parse(f"{dataset_id}@{version}"))
+                manifest = Manifest.model_validate_json((version_dir / MANIFEST_FILE).read_text())
+                recorded = TimeNetSnapshot.from_source_map(manifest.build_env.git)
+                TimeNetSnapshot.read().require_unchanged_since(recorded)
+                self._delete_prefix(client, f"{final_base}.tmp-")  # sweep a prior crashed publish's temp prefix
+                files = sorted(path for path in version_dir.rglob("*") if path.is_file())
+                for path in files:
+                    relpath = path.relative_to(version_dir).as_posix()
+                    client.upload_file(str(path), self._bucket, f"{temp_base}/{relpath}")
+                data_relpaths = [
+                    path.relative_to(version_dir).as_posix() for path in files if path.name != MANIFEST_FILE
+                ]
+                for relpath in data_relpaths:
+                    self._move(client, f"{temp_base}/{relpath}", f"{final_base}/{relpath}")
+                self._move(client, f"{temp_base}/{MANIFEST_FILE}", f"{final_base}/{MANIFEST_FILE}")
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+                self._delete_prefix(client, f"{temp_base}/")  # remove any objects left staged in the temp prefix
         return version
 
     @staticmethod

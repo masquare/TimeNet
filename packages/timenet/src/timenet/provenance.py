@@ -21,7 +21,6 @@ from timenet.manifest import GitSource, GitSourceMap, PackageName
 
 
 _GIT_TIMEOUT_S = 30
-_REFUSED = "refusing to publish to a remote registry, because its manifest must name the exact code"
 
 
 @dataclass(frozen=True)
@@ -175,7 +174,18 @@ class Snapshot(BaseModel, ABC):
 
     @abstractmethod
     def require_traceable(self) -> None:
-        """Refuse a publish to a remote registry if the code has local changes. Raises ``TimeNetBuildError``."""
+        """Raise ``TimeNetBuildError`` if the code has local changes."""
+
+    def require_unchanged_since(self, recorded: Self) -> None:
+        """Raise ``TimeNetBuildError`` unless this snapshot is traceable and equal to ``recorded``."""
+        # A caller reads a new snapshot after the build wrote its manifest. If the code changed
+        # while the build ran, the manifest names a state that no longer exists.
+        self.require_traceable()
+        if self != recorded:
+            raise TimeNetBuildError(
+                f"the code changed while the build ran. The manifest records {recorded.to_source_map()}, "
+                f"but the installed code is now at {self.to_source_map()}. Build again."
+            )
 
 
 class PackageSnapshot(Snapshot):
@@ -209,13 +219,10 @@ class PackageSnapshot(Snapshot):
         return {self.package_name: self.source}
 
     def require_traceable(self) -> None:
-        """Refuse a publish to a remote registry if this package has local changes. Raises ``TimeNetBuildError``."""
-        # A release in a remote registry outlives the machine that built it, so its manifest must
-        # name code that exists in the repository.
+        """Raise ``TimeNetBuildError`` if this package has local changes."""
         if self.source.contains_local_changes:
             raise TimeNetBuildError(
-                f"{_REFUSED}. Uncommitted changes in the package directory of {self.distribution} at "
-                f"{self.source.sha[:12]}. Commit them first. Or build to a local directory, which accepts any state."
+                f"{self.distribution} has uncommitted changes in its package directory at {self.source.sha[:12]}"
             )
 
 
@@ -268,19 +275,16 @@ class TimeNetSnapshot(Snapshot):
 
     def require_traceable(self) -> None:
         """Refuse a publish to a remote registry if a TimeNet distribution has local changes."""
-        for package in self._installed():
-            package.require_traceable()
-
-    def require_unchanged_since(self, recorded: Self) -> None:
-        """Refuse an upload unless this snapshot is traceable and equal to ``recorded``, from the manifest."""
-        # A remote registry reads a new snapshot after the write and before the upload. If the code
-        # changed while the build ran, the manifest names a state that no longer exists.
-        self.require_traceable()
-        if self != recorded:
+        # Only a publish to a remote registry asks for this check. Such a release outlives the
+        # machine that built it, so its manifest must name code that exists in the repository.
+        try:
+            for package in self._installed():
+                package.require_traceable()
+        except TimeNetBuildError as exc:
             raise TimeNetBuildError(
-                f"refusing to publish: the TimeNet code changed while the build ran. The manifest records "
-                f"{recorded.to_source_map()}, but the installed code is now at {self.to_source_map()}. Build again."
-            )
+                "refusing to publish to a remote registry, because its manifest must name the exact code. "
+                f"{exc}. Commit them first. Or build to a local directory, which accepts any state."
+            ) from exc
 
     def _installed(self) -> list[PackageSnapshot]:
         """Return the snapshot of each installed TimeNet package."""
@@ -288,17 +292,17 @@ class TimeNetSnapshot(Snapshot):
 
     @classmethod
     def current(cls) -> "TimeNetSnapshot":
-        """Return the snapshot that the running build holds, or a new read outside a build."""
+        """Return the snapshot that the running build holds, or a fresh read outside a build."""
         held = _HELD_SNAPSHOT.get()
         return held if held is not None else cls.read()
 
     @classmethod
     @contextmanager
     def held_for_build(cls) -> Generator["TimeNetSnapshot"]:
-        """Hold one snapshot for the code inside the block. Also works as ``@TimeNetSnapshot.held_for_build()``."""
-        # The publish checks and the manifest then see the same state: the state of the code that
-        # the build imported. An enclosing build's snapshot stays in force, so a parent built
-        # inside a build sees the same state.
+        """Read one snapshot and hold it for the build inside the ``with`` block."""
+        # The publish checks and the manifest then see the same state: the installed source state
+        # read when the build started. An enclosing build's snapshot stays in force, so a parent
+        # built inside a build sees the same state.
         held = _HELD_SNAPSHOT.get()
         if held is not None:
             yield held

@@ -219,7 +219,11 @@ def test_a_snapshot_with_local_changes_is_refused_with_the_package_and_its_commi
     snapshot = TimeNetSnapshot.from_source_map({"timenet": _CLEAN, "timenet-connectors": dirty})
     with pytest.raises(
         TimeNetBuildError,
-        match=r"Uncommitted changes in the package directory of timenet-connectors at bbbbbbbbbbbb\. Commit them first",
+        match=(
+            r"refusing to publish to a remote registry, because its manifest must name the exact code\. "
+            r"timenet-connectors has uncommitted changes in its package directory at bbbbbbbbbbbb\. "
+            r"Commit them first\. Or build to a local directory"
+        ),
     ):
         snapshot.require_traceable()
 

@@ -26,7 +26,6 @@ from timenet.values_backends import SUPPORTED_VALUES_BACKENDS
 from timenet.writer import TimeFWriter, WriteProgressEvent
 
 
-@TimeNetSnapshot.held_for_build()
 def run_pipeline(  # ruff: ignore[too-many-arguments]
     connector: BaseConnector,
     root: Path,
@@ -50,7 +49,8 @@ def run_pipeline(  # ruff: ignore[too-many-arguments]
     connector that overrides ``compose``; otherwise the build raises before it opens a parent or
     downloads anything. The engine only writes local files. Publishing to a remote registry is a
     separate step. The manifest records the commit of the TimeNet code as it was when the build
-    started.
+    started. The engine reads that commit only for a version that it builds, so an already-committed
+    version returns even if the commit is unknown.
 
     Args:
         connector: The connector to build.
@@ -89,7 +89,7 @@ def run_pipeline(  # ruff: ignore[too-many-arguments]
     cache.mkdir(parents=True, exist_ok=True)
 
     # Open the declared parents before downloading, so a missing parent fails before any raw I/O.
-    with open_parents(metadata, LocalRegistry(root)) as context:
+    with TimeNetSnapshot.held_for_build(), open_parents(metadata, LocalRegistry(root)) as context:
         dataset = _compose(connector, metadata, cache, context)
         # Derive the schema before writing. store_dataset() derives one only for a dataset that has none.
         dataset.derive_schema()
@@ -110,7 +110,6 @@ def run_pipeline(  # ruff: ignore[too-many-arguments]
     return version_dir
 
 
-@TimeNetSnapshot.held_for_build()
 def publish_pipeline(  # ruff: ignore[too-many-arguments]
     connector: BaseConnector,
     registry: WritableRegistry,
@@ -133,7 +132,9 @@ def publish_pipeline(  # ruff: ignore[too-many-arguments]
     before any download. The composed dataset can be a child whose card says open while a parent is
     not open. So the engine checks the dataset again with its lineage before the write.
     Such a registry also needs TimeNet code without local changes, which the engine checks before
-    any download. The registry checks both again when it stores the release.
+    any download. The registry checks both again when it stores the release. The engine reads the
+    commit only for a version that it builds, so an already-committed version returns even if the
+    commit is unknown.
 
     Args:
         connector: The connector to build.
@@ -165,23 +166,24 @@ def publish_pipeline(  # ruff: ignore[too-many-arguments]
     version = str(metadata.dataset_version)
     if not force and registry.exists(dataset_id, version):
         return version
-    if not isinstance(registry, LocalRegistry):
-        require_open_access(metadata)
-        TimeNetSnapshot.current().require_traceable()
-    _check_composes(connector, metadata)
-
-    cache = cache_dir if cache_dir is not None else settings().cache_dir / dataset_id
-    cache.mkdir(parents=True, exist_ok=True)
-
-    with open_parents(metadata, registry) as context:
-        dataset = _compose(connector, metadata, cache, context)
+    with TimeNetSnapshot.held_for_build() as snapshot:
         if not isinstance(registry, LocalRegistry):
-            require_open_access(dataset.metadata, dataset.lineage.values())
-        dataset.derive_schema()
-        # Pass pins only when there are any, so a registry written against the earlier store()
-        # signature keeps working for every other build.
-        pinned = {"pinned_by": pinned_by} if pinned_by else {}
-        registry.store(dataset, force=force, values_backend=resolved_backend, progress_cb=progress_cb, **pinned)
+            require_open_access(metadata)
+            snapshot.require_traceable()
+        _check_composes(connector, metadata)
+
+        cache = cache_dir if cache_dir is not None else settings().cache_dir / dataset_id
+        cache.mkdir(parents=True, exist_ok=True)
+
+        with open_parents(metadata, registry) as context:
+            dataset = _compose(connector, metadata, cache, context)
+            if not isinstance(registry, LocalRegistry):
+                require_open_access(dataset.metadata, dataset.lineage.values())
+            dataset.derive_schema()
+            # Pass pins only when there are any, so a registry written against the earlier store()
+            # signature keeps working for every other build.
+            pinned = {"pinned_by": pinned_by} if pinned_by else {}
+            registry.store(dataset, force=force, values_backend=resolved_backend, progress_cb=progress_cb, **pinned)
     if not keep_cache and cache_dir is None and cache.is_dir():
         shutil.rmtree(cache)
     return version
