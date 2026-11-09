@@ -1,7 +1,6 @@
 """The :class:`Manifest`: the compiled ``manifest.json`` file and its JSON codec."""
 
 from importlib.metadata import distributions
-from pathlib import Path
 import platform
 from typing import Annotated, Any, Self
 
@@ -30,11 +29,6 @@ class GitSource(TimeFModel):
     """The commit of the checkout, or of the checkout that built the wheel."""
     contains_local_changes: StrictBool
     """Whether the package directory had uncommitted changes, untracked files included."""
-
-    @classmethod
-    def load_from_build_info(cls, path: Path) -> Self:
-        """Read the record that ``scripts/build_dists.py`` wrote into a built package."""
-        return cls.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 DistributionName = StrictStr
