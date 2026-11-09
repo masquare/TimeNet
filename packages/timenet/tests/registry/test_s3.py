@@ -7,7 +7,6 @@ pytest.importorskip("moto")
 from moto.server import ThreadedMotoServer  # ruff: ignore[module-import-not-at-top-of-file]
 import pyarrow.fs as pafs  # ruff: ignore[module-import-not-at-top-of-file]
 
-from timenet import provenance  # ruff: ignore[module-import-not-at-top-of-file]
 from timenet.client import TimeNet  # ruff: ignore[module-import-not-at-top-of-file]
 from timenet.dataset import TimeFDataset  # ruff: ignore[module-import-not-at-top-of-file]
 from timenet.errors import (  # ruff: ignore[module-import-not-at-top-of-file]
@@ -15,6 +14,8 @@ from timenet.errors import (  # ruff: ignore[module-import-not-at-top-of-file]
     TimeNetDatasetNotFoundError,
     TimeNetRegistryError,
 )
+from timenet.manifest import GitSource  # ruff: ignore[module-import-not-at-top-of-file]
+from timenet.provenance import GitSnapshot  # ruff: ignore[module-import-not-at-top-of-file]
 from timenet.reader import TimeFReader  # ruff: ignore[module-import-not-at-top-of-file]
 from timenet.registry import LocalRegistry, S3Registry  # ruff: ignore[module-import-not-at-top-of-file]
 from timenet.testing import assert_datasets_equal, make_dataset  # ruff: ignore[module-import-not-at-top-of-file]
@@ -139,9 +140,9 @@ def test_rejects_a_non_s3_uri(tmp_path):
 
 
 def test_store_refuses_code_that_changed_while_the_release_was_written(s3_root, tmp_path, monkeypatch):
-    reads = iter([{"timenet": {"sha": "a" * 40, "local_changes": False}}])
-    later = {"timenet": {"sha": "b" * 40, "local_changes": False}}
-    monkeypatch.setattr(provenance, "_read_git", lambda: next(reads, later))
+    reads = iter([GitSnapshot({"timenet": GitSource(sha="a" * 40, contains_local_changes=False)})])
+    later = GitSnapshot({"timenet": GitSource(sha="b" * 40, contains_local_changes=False)})
+    monkeypatch.setattr(GitSnapshot, "read", staticmethod(lambda: next(reads, later)))
     # Moto keeps its buckets across tests, so use a prefix that no other test stores under.
     registry = S3Registry(f"{s3_root}/changed-code", cache_dir=tmp_path / "cache")
 

@@ -14,11 +14,11 @@ from typing import BinaryIO, cast
 import httpx
 import pyarrow.fs as pafs
 
-from timenet import provenance
 from timenet.config import settings
 from timenet.dataset import TimeFDataset
 from timenet.errors import TimeNetRegistryError
 from timenet.manifest import Manifest, PayloadSource
+from timenet.provenance import GitSnapshot
 from timenet.registry._paths import release_dir
 from timenet.registry.lazy_read import LazyReadRegistry
 from timenet.registry.remote._download import ProgressCallback, download_version_files
@@ -161,7 +161,7 @@ class RemoteRegistry(LazyReadRegistry):
             self._http, manifest, dataset_id, version, Path(dest_dir), force=force, progress_cb=progress_cb
         )
 
-    @provenance.git_snapshot()
+    @GitSnapshot.held_for_build()
     def store(
         self,
         dataset: TimeFDataset,
@@ -202,7 +202,7 @@ class RemoteRegistry(LazyReadRegistry):
             return version
         # This registry serves its releases to others, so it holds only open and traceable ones.
         require_open_access(dataset.metadata, dataset.lineage.values())
-        provenance.require_traceable()
+        GitSnapshot.current().require_traceable()
         staging_root = Path(tempfile.mkdtemp(prefix="timenet-publish-"))
         try:
             # The writer stages locally but checks every payload source against this registry.
@@ -218,7 +218,7 @@ class RemoteRegistry(LazyReadRegistry):
             version_dir = release_dir(staging_root, DatasetRef.parse(f"{dataset_id}@{version}"))
             manifest_bytes = (version_dir / "manifest.json").read_bytes()
             manifest = Manifest.model_validate_json(manifest_bytes.decode())
-            provenance.require_unchanged(manifest.build_env)
+            GitSnapshot.read().require_unchanged_since(manifest.build_env.get("git", {}))
             declared = {part.path for part in manifest.files.all_files()}
             publish_endpoint = f"/datasets/{dataset_id}/{version}/publish"
             publish = PublishResponseModel.model_validate_json(

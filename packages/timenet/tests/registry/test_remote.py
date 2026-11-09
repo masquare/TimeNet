@@ -8,7 +8,6 @@ import numpy as np
 from pydantic import ValidationError
 import pytest
 
-from timenet import provenance
 from timenet.client import TimeNet
 from timenet.dataset import Record, RegularAxis, Signal, Source, TimeFDataset
 from timenet.errors import (
@@ -20,7 +19,8 @@ from timenet.errors import (
     TimeNetRegistryError,
 )
 from timenet.format.checksums import file_checksum
-from timenet.manifest import Manifest
+from timenet.manifest import GitSource, Manifest
+from timenet.provenance import GitSnapshot
 from timenet.reader import LoadPlan, TimeFReader
 from timenet.registry import LocalRegistry, RemoteRegistry, open_local_version
 from timenet.testing import assert_datasets_equal, make_dataset
@@ -548,16 +548,17 @@ def test_store_refuses_a_release_that_is_not_open_before_writing(publish_fake):
 
 def test_store_refuses_untraceable_code_before_writing(publish_fake, monkeypatch):
     registry, state = publish_fake
-    monkeypatch.setattr(provenance, "_read_git", lambda: {"timenet": {"sha": "a" * 40, "local_changes": True}})
+    dirty = GitSnapshot({"timenet": GitSource(sha="a" * 40, contains_local_changes=True)})
+    monkeypatch.setattr(GitSnapshot, "read", staticmethod(lambda: dirty))
     with pytest.raises(TimeNetBuildError, match="Uncommitted changes"):
         registry.store(make_dataset())
     assert state["manifest"] is None
 
 
 def test_store_refuses_code_that_changed_while_the_release_was_written(tmp_path, monkeypatch):
-    reads = iter([{"timenet": {"sha": "a" * 40, "local_changes": False}}])
-    later = {"timenet": {"sha": "b" * 40, "local_changes": False}}
-    monkeypatch.setattr(provenance, "_read_git", lambda: next(reads, later))
+    reads = iter([GitSnapshot({"timenet": GitSource(sha="a" * 40, contains_local_changes=False)})])
+    later = GitSnapshot({"timenet": GitSource(sha="b" * 40, contains_local_changes=False)})
+    monkeypatch.setattr(GitSnapshot, "read", staticmethod(lambda: next(reads, later)))
     transport, state = build_publish_fake(token="tok_rw")
     registry = RemoteRegistry("http://api.local", token="tok_rw", transport=transport, cache_dir=tmp_path)
 

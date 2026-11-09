@@ -5,7 +5,6 @@ from contextlib import ExitStack
 from pathlib import Path
 import shutil
 
-from timenet import provenance
 from timenet.config import settings
 from timenet.connectors import BaseConnector, BuildContext
 from timenet.dataset import TimeFDataset
@@ -13,6 +12,7 @@ from timenet.dataset.composition import _record_parent
 from timenet.errors import TimeFValidationError
 from timenet.format.constants import MANIFEST_FILE
 from timenet.manifest import PayloadSource
+from timenet.provenance import GitSnapshot
 from timenet.reader import TimeFReader
 from timenet.registry.base import BaseRegistry
 from timenet.registry.dependencies import prepare_local_copy
@@ -26,7 +26,7 @@ from timenet.values_backends import SUPPORTED_VALUES_BACKENDS
 from timenet.writer import TimeFWriter, WriteProgressEvent
 
 
-@provenance.git_snapshot()
+@GitSnapshot.held_for_build()
 def run_pipeline(  # ruff: ignore[too-many-arguments]
     connector: BaseConnector,
     root: Path,
@@ -110,7 +110,7 @@ def run_pipeline(  # ruff: ignore[too-many-arguments]
     return version_dir
 
 
-@provenance.git_snapshot()
+@GitSnapshot.held_for_build()
 def publish_pipeline(  # ruff: ignore[too-many-arguments]
     connector: BaseConnector,
     registry: WritableRegistry,
@@ -167,7 +167,7 @@ def publish_pipeline(  # ruff: ignore[too-many-arguments]
         return version
     if not isinstance(registry, LocalRegistry):
         require_open_access(metadata)
-        provenance.require_traceable()
+        GitSnapshot.current().require_traceable()
     _check_composes(connector, metadata)
 
     cache = cache_dir if cache_dir is not None else settings().cache_dir / dataset_id

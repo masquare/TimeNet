@@ -5,13 +5,13 @@ from typing import Any, ClassVar, cast
 import httpx
 import pytest
 
-from timenet import provenance
 from timenet.config import settings
 from timenet.connectors import BaseConnector, BuildContext
 from timenet.dataset import TimeFDataset
 from timenet.engine import open_parents, publish_pipeline, run_pipeline, store_dataset
 from timenet.errors import TimeFValidationError, TimeNetAccessError, TimeNetBuildError, TimeNetDatasetNotFoundError
-from timenet.manifest import Manifest
+from timenet.manifest import GitSource, Manifest
+from timenet.provenance import GitSnapshot
 from timenet.reader import TimeFReader
 from timenet.registry import LocalRegistry, RemoteRegistry
 from timenet.registry.writable import WritableRegistry
@@ -535,9 +535,9 @@ def test_publish_pipeline_refuses_an_open_child_of_a_credentialed_parent_before_
 
 def _git_states(monkeypatch, *states):
     """Make each git read return the next state, and the last one from then on."""
-    reads = iter(states)
-    last = states[-1]
-    monkeypatch.setattr(provenance, "_read_git", lambda: next(reads, last))
+    snapshots = [GitSnapshot(state) for state in states]
+    reads = iter(snapshots)
+    monkeypatch.setattr(GitSnapshot, "read", staticmethod(lambda: next(reads, snapshots[-1])))
 
 
 def _no_upload(request: httpx.Request) -> httpx.Response:
@@ -547,7 +547,7 @@ def _no_upload(request: httpx.Request) -> httpx.Response:
 
 
 def test_publish_pipeline_refuses_a_build_with_local_changes_before_downloading(tmp_path, monkeypatch):
-    _git_states(monkeypatch, {"timenet": {"sha": "a" * 40, "local_changes": True}})
+    _git_states(monkeypatch, {"timenet": GitSource(sha="a" * 40, contains_local_changes=True)})
     monkeypatch.setattr(_DemoConnector, "download", lambda self, cache_dir: pytest.fail("downloaded"))
     remote = RemoteRegistry("http://api.local", transport=httpx.MockTransport(_no_upload), cache_dir=tmp_path)
 
@@ -556,7 +556,7 @@ def test_publish_pipeline_refuses_a_build_with_local_changes_before_downloading(
 
 
 def test_a_local_build_with_local_changes_records_them(tmp_path, monkeypatch):
-    dirty = {"sha": "a" * 40, "local_changes": True}
+    dirty = GitSource(sha="a" * 40, contains_local_changes=True)
     _git_states(monkeypatch, {"timenet": dirty})
 
     publish_pipeline(_DemoConnector(), LocalRegistry(tmp_path / "local"), cache_dir=tmp_path / "cache")
@@ -569,8 +569,8 @@ def test_publish_pipeline_refuses_code_that_changed_while_the_build_ran(tmp_path
     # The build starts on one commit, and the code is on another one by the time of the upload.
     _git_states(
         monkeypatch,
-        {"timenet": {"sha": "a" * 40, "local_changes": False}},
-        {"timenet": {"sha": "b" * 40, "local_changes": False}},
+        {"timenet": GitSource(sha="a" * 40, contains_local_changes=False)},
+        {"timenet": GitSource(sha="b" * 40, contains_local_changes=False)},
     )
     remote = RemoteRegistry("http://api.local", transport=httpx.MockTransport(_no_upload), cache_dir=tmp_path)
 
