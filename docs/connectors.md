@@ -397,4 +397,4 @@ that split keeps them. A child with a split of its own removes them and adds its
 
 ---
 
-See the [API reference for `timenet.connectors`](api/connectors.md) for the full symbol listing.
+See the [API reference for `timenet.connectors`](api/timenet.connectors.md) for the full symbol listing.
